@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Philosophy UP 翻译工作台</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f5f7;
+      --panel: #ffffff;
+      --ink: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --accent-dark: #1d4ed8;
+      --danger: #b91c1c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    header {
+      padding: 16px 28px;
+      background: linear-gradient(90deg, #111827, #1f2937);
+      color: #f9fafb;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+    }
+
+    header p {
+      margin: 4px 0 0;
+      color: #d1d5db;
+      font-size: 13px;
+    }
+
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: minmax(320px, 0.85fr) minmax(420px, 1.15fr);
+      gap: 16px;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      color: #374151;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      font: inherit;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      padding: 9px 11px;
+      background: #ffffff;
+      color: var(--ink);
+    }
+
+    input[type="file"] {
+      width: 100%;
+      border: 1px dashed #cbd5e1;
+      border-radius: 12px;
+      padding: 14px;
+      background: #f8fafc;
+    }
+
+    textarea {
+      min-height: 360px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    button {
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 9px 13px;
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.15s ease, transform 0.05s ease;
+    }
+
+    button:hover {
+      background: var(--accent-dark);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    button.secondary {
+      border-color: #d1d5db;
+      background: #ffffff;
+      color: #111827;
+    }
+
+    button.secondary:hover {
+      background: #f9fafb;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 14px;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-size: 13px;
+      min-height: 38px;
+      white-space: pre-wrap;
+    }
+
+    .status.error {
+      background: #fef2f2;
+      color: var(--danger);
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .project-card,
+    .event-log {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #f9fafb;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      overflow: auto;
+      max-height: 260px;
+    }
+
+    .event-log {
+      max-height: 180px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border: 1px solid #dbeafe;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>翻译子程序工作台</h1>
+      <p>独立于主 RAG 前端：上传文档、生成概览与术语表、确认术语、分块翻译并导出。</p>
+    </div>
+    <span class="pill" id="apiBadge">API: 检查中</span>
+  </header>
+
+  <main>
+    <section>
+      <h2>项目控制</h2>
+      <p class="muted">
+        文件会上传到 <code>data/translation_uploads/</code>，翻译状态保存在
+        <code>data/translations/&lt;project_id&gt;/</code>。长书翻译耗时较久，请保持后端窗口运行。
+      </p>
+
+      <label for="translationFileInput">源文件</label>
+      <input id="translationFileInput" type="file" accept=".pdf,.docx,.json,.epub,application/pdf" />
+
+      <div class="grid-2">
+        <div>
+          <label for="translationTargetInput">目标语言</label>
+          <input id="translationTargetInput" type="text" value="zh-CN" />
+        </div>
+        <div>
+          <label for="translationFormatSelect">导出格式</label>
+          <select id="translationFormatSelect">
+            <option value="txt">txt</option>
+            <option value="docx">docx</option>
+          </select>
+        </div>
+      </div>
+
+      <label for="translationModelSelect">模型</label>
+      <select id="translationModelSelect">
+        <option value="auto:auto">Auto（自动避开配额耗尽模型）</option>
+        <option value="gemini:gemini-3.1-pro-preview" selected>Gemini 3.1 Pro Preview</option>
+        <option value="gemini:gemini-2.5-pro">Gemini 2.5 Pro</option>
+        <option value="gemini:gemini-2.5-flash">Gemini 2.5 Flash</option>
+        <option value="openai:gpt-5.1">OpenAI gpt-5.1</option>
+        <option value="openai:gpt-5-mini">OpenAI gpt-5-mini</option>
+        <option value="deepseek:deepseek-v4-flash">DeepSeek V4 Flash</option>
+        <option value="deepseek:deepseek-v4-pro">DeepSeek V4 Pro</option>
+        <option value="deepseek:deepseek-reasoner">DeepSeek Reasoner（旧名兼容）</option>
+      </select>
+      <p class="muted">翻译阶段按段落/结构块并发处理，正文脚注标记会保留，脚注译文会集中导出到末尾。</p>
+
+      <div class="grid-2">
+        <div>
+          <label for="projectSelect">已有项目</label>
+          <select id="projectSelect">
+            <option value="">正在加载...</option>
+          </select>
+        </div>
+        <div>
+          <label for="maxChunksInput">本次最多翻译块数</label>
+          <input id="maxChunksInput" type="number" min="0" step="1" value="0" />
+        </div>
+        <div>
+          <label for="concurrencyInput">并发数（1-20）</label>
+          <input id="concurrencyInput" type="number" min="1" max="20" step="1" value="4" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="translationPrepareBtn">1. 生成概览与术语表</button>
+        <button id="translationConfirmBtn" class="secondary">2. 确认术语表</button>
+        <button id="translationRunBtn" class="secondary">3. 翻译</button>
+        <button id="translationExportBtn" class="secondary">4. 导出</button>
+        <button id="translationOneClickBtn">一键：生成→确认→翻译→导出</button>
+      </div>
+
+      <div class="actions">
+        <button id="refreshProjectBtn" class="secondary">刷新项目</button>
+        <button id="translationLoadGlobalGlossaryBtn" class="secondary">查看长期术语库</button>
+        <button id="translationSaveGlobalGlossaryBtn" class="secondary">保存长期术语库</button>
+      </div>
+
+      <div id="translationStatus" class="status">准备就绪。</div>
+      <div id="translationOverview" class="project-card">暂无翻译项目。</div>
+      <div id="eventLog" class="event-log">事件日志：暂无</div>
+    </section>
+
+    <section>
+      <h2>术语表 JSON</h2>
+      <p class="muted">
+        生成概览后会显示术语表草稿。你可以先人工编辑，再点击“确认术语表”。确认后的项目术语会合并进长期术语库。
+      </p>
+      <textarea id="translationGlossaryInput" spellcheck="false" placeholder="术语表 JSON 会显示在这里。"></textarea>
+    </section>
+  </main>
+
+  <script src="translation_frontend.js"></script>
+</body>
+</html>

@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Philosophy RAG — 评测控制台</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #fff;
+      --border: #e2e8f0;
+      --muted: #64748b;
+      --accent: #0f766e;
+      --warn: #c2410c;
+      --sep: #7c3aed;
+      --main: #1d4ed8;
+    }
+    body { font-family: system-ui, "Segoe UI", sans-serif; margin: 0; padding: 16px; max-width: 1200px; margin-inline: auto; background: var(--bg); color: #0f172a; }
+    h1 { font-size: 1.35rem; margin: 0 0 8px; }
+    h2 { font-size: 1.05rem; margin: 1.25rem 0 8px; }
+    label { display: block; margin-top: 10px; font-weight: 600; font-size: 14px; }
+    textarea, select, input { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+    textarea { min-height: 72px; }
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+    button {
+      padding: 10px 16px; cursor: pointer; border-radius: 8px; border: 1px solid var(--border);
+      background: #fff; font-weight: 600; font-size: 14px;
+    }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button.secondary { background: #f1f5f9; }
+    .hint { color: var(--muted); font-size: 12px; font-weight: 400; }
+    pre.json-pre { background: #1e293b; color: #e2e8f0; padding: 12px; overflow: auto; font-size: 11px; white-space: pre-wrap; border-radius: 8px; max-height: 50vh; }
+
+    /* 结果总览 */
+    #resultShell { display: none; margin-top: 16px; }
+    #resultShell.visible { display: block; }
+    .summary-strip {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px;
+      padding: 12px 14px; background: linear-gradient(135deg, #ecfdf5 0%, #f0f9ff 100%);
+      border: 1px solid #a7f3d0; border-radius: 12px;
+    }
+    .summary-strip.contam { background: linear-gradient(135deg, #f5f3ff 0%, #eff6ff 100%); border-color: #c4b5fd; }
+    .summary-strip.faith { background: linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%); border-color: #fcd34d; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 600; background: #fff; border: 1px solid var(--border);
+    }
+    .badge.teal { background: #ccfbf1; border-color: #5eead4; color: #115e59; }
+    .badge.violet { background: #ede9fe; border-color: #a78bfa; color: #5b21b6; }
+    .badge.amber { background: #fef3c7; border-color: #fbbf24; color: #92400e; }
+    .badge.blue { background: #dbeafe; border-color: #60a5fa; color: #1e3a8a; }
+
+    .grid-modes {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+    }
+    @media (max-width: 900px) { .grid-modes { grid-template-columns: 1fr; } }
+
+    .mode-card {
+      border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--card);
+      display: flex; flex-direction: column; min-height: 120px;
+    }
+    .mode-card header {
+      padding: 8px 12px; font-size: 13px; font-weight: 700; color: #fff;
+      background: #0d9488;
+    }
+    .mode-card .body { padding: 10px 12px; flex: 1; font-size: 12px; color: var(--muted); max-height: 220px; overflow: auto; }
+    .mode-card .chunks { padding: 0 12px 12px; max-height: 360px; overflow-y: auto; }
+
+    .chunk {
+      border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
+      background: #fafafa; font-size: 12px; line-height: 1.45;
+    }
+    .chunk-meta { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+    .chunk-text { white-space: pre-wrap; word-break: break-word; }
+
+    .legend { font-size: 12px; color: var(--muted); margin: 8px 0 0; line-height: 1.5; }
+    details.raw-json { margin-top: 12px; }
+    details.raw-json summary { cursor: pointer; font-weight: 600; color: var(--muted); padding: 8px 0; }
+    textarea.dim { opacity: 0.6; background: #f1f5f9; color: #64748b; }
+    textarea.dim::placeholder { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>评测控制台</h1>
+    <p class="hint">请先启动后端 <code>http://127.0.0.1:8000</code>。下方可对<strong>单次</strong>或<strong>一键对比</strong>运行；大批量请用 <code>python -m src.eval.cli</code>。</p>
+
+    <label>API 根地址</label>
+    <input type="text" id="apiBase" value="http://127.0.0.1:8000" />
+
+    <label>实验类型</label>
+    <select id="suite">
+      <option value="ablation">1 消融（检索模式对比）</option>
+      <option value="terminology">2 术语（每模式固定 30 条；批量 CLI 按 experiment 过滤）</option>
+    </select>
+
+    <div id="ablationOpts">
+      <label>检索模式 <span class="hint">（单次运行时使用）</span></label>
+      <select id="mode">
+        <option value="dense_only">Baseline1 — dense_only</option>
+        <option value="sparse_only">Baseline2 — sparse_only</option>
+        <option value="merge_no_rrf">Hybrid — merge_no_rrf</option>
+        <option value="full_rrf">Full — full_rrf</option>
+      </select>
+    </div>
+
+    <label>返回片段条数（上限） <span class="hint" id="topNHint">多条限定文献时建议 ≥16，便于每路都有足够条数展示。</span></label>
+    <input type="number" id="topN" value="16" min="1" max="50" />
+
+    <label>片段正文长度 <span class="hint">（0 = 整段 chunk 全文）</span></label>
+    <input type="number" id="docPreviewChars" value="0" min="0" max="1000000" />
+
+    <label>限定文献 <span class="hint">（可选：路径<strong>子串</strong>匹配；<strong>每行一条</strong>，勿用英文逗号拆多条——书名里常有逗号。同一行多条可用分号。填<strong>两条及以上</strong>时按路数<strong>均分条数</strong>。）</span></label>
+    <textarea id="sourceFilters" rows="2" placeholder="例如：MEGA 或某本书文件名片段"></textarea>
+
+    <label>限定关键词 <span class="hint" id="keywordHint">仅在消融/术语且模式为 <strong>Full（full_rrf）</strong> 时发往检索；其它模式已禁用输入。</span></label>
+    <textarea id="keywordTerms" rows="2" class="dim" disabled placeholder="例如：Zusammenwirken, Kooperation"></textarea>
+
+    <label>问题</label>
+    <textarea id="q" rows="8"></textarea>
+
+    <div class="btn-row">
+      <button type="button" class="primary" id="run">运行（当前选项 · 单次）</button>
+      <button type="button" class="secondary" id="runBatchModes">一键四模式对比</button>
+    </div>
+    <p class="hint" id="batchHint" style="margin-top:8px;">「一键四模式」依次请求 4 次；术语下每格 30 条。限定关键词仅在 Full（full_rrf）请求中附带。</p>
+  </div>
+
+  <div id="resultShell">
+    <h2>测试结果一览</h2>
+    <div id="resultSummary" class="summary-strip"></div>
+    <div id="resultVisual"></div>
+    <details class="raw-json">
+      <summary>原始 JSON（调试）</summary>
+      <pre class="json-pre" id="out">（空）</pre>
+    </details>
+  </div>
+
+  <script>
+    const DEFAULT_EVAL_QUESTION =
+      "对比分析MEGA②I/5卷《德意志意识形态》中所有“共同活动”（Zusammenwirken）及其变体和MEGA②II/10《资本论》第一卷中所有“协作”（Kooperation）及其变体的相似之处和差异之处，给出具体文本语段。";
+    document.getElementById("q").value = DEFAULT_EVAL_QUESTION;
+
+    const apiBase = () => document.getElementById("apiBase").value.replace(/\/$/, "");
+    const suiteEl = document.getElementById("suite");
+
+    const MODE_BATCH = [
+      { mode: "dense_only", title: "Baseline1", sub: "dense_only · 仅稠密" },
+      { mode: "sparse_only", title: "Baseline2", sub: "sparse_only · 仅 FTS" },
+      { mode: "merge_no_rrf", title: "Hybrid", sub: "merge_no_rrf · 无 RRF" },
+      { mode: "full_rrf", title: "Full", sub: "full_rrf · RRF" },
+    ];
+
+    function syncTopNField() {
+      const s = suiteEl.value;
+      const el = document.getElementById("topN");
+      const h = document.getElementById("topNHint");
+      if (s === "terminology") {
+        el.value = "30";
+        el.disabled = true;
+        h.textContent = "（术语：后端固定 30 条/模式）";
+      } else {
+        el.disabled = false;
+        h.textContent = "";
+        if (String(el.value) === "30") el.value = "16";
+      }
+    }
+
+    function syncSuitePanels() {
+      syncTopNField();
+      syncKeywordFieldState();
+    }
+    suiteEl.addEventListener("change", syncSuitePanels);
+    document.getElementById("mode").addEventListener("change", syncKeywordFieldState);
+    syncSuitePanels();
+
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = s == null ? "" : String(s);
+      return d.innerHTML;
+    }
+
+    function showShell() {
+      document.getElementById("resultShell").classList.add("visible");
+    }
+
+    function setSummary(html, stripClass) {
+      const el = document.getElementById("resultSummary");
+      el.className = "summary-strip" + (stripClass ? " " + stripClass : "");
+      el.innerHTML = html;
+    }
+
+    function renderDocChunksInto(container, data) {
+      const prev = data.docs_preview;
+      if (!prev || !prev.length) {
+        container.innerHTML = "<p class='hint'>无检索片段。</p>";
+        return;
+      }
+      prev.forEach((d, i) => {
+        const txt = d.text_preview != null ? d.text_preview : (d.text_head || "");
+        const div = document.createElement("div");
+        div.className = "chunk";
+        div.innerHTML =
+          '<div class="chunk-meta">#' + (i + 1) + " · " + esc(d.chunk_id) + " · " + esc(d.source) + " p." + esc(d.page) + "</div>" +
+          '<div class="chunk-text">' + esc(txt) + "</div>";
+        container.appendChild(div);
+      });
+    }
+
+    function renderSingleRetrievalLike(data, suiteLabel) {
+      const visual = document.getElementById("resultVisual");
+      visual.innerHTML = "";
+      const leg = document.createElement("p");
+      leg.className = "legend";
+      leg.innerHTML = suiteLabel;
+      visual.appendChild(leg);
+
+      const modeLine = document.createElement("p");
+      modeLine.innerHTML =
+        "<strong>" +
+        esc(data.mode_label || data.mode || "") +
+        "</strong> · 共 " +
+        (data.docs_preview ? data.docs_preview.length : 0) +
+        " 条";
+      visual.appendChild(modeLine);
+
+      const box = document.createElement("div");
+      renderDocChunksInto(box, data);
+      visual.appendChild(box);
+    }
+
+    function renderMultiModes(results, suiteName) {
+      const visual = document.getElementById("resultVisual");
+      visual.innerHTML = "";
+      const leg = document.createElement("p");
+      leg.className = "legend";
+      leg.innerHTML =
+        "<strong>" +
+        esc(suiteName) +
+        "</strong>：四宫格为四种检索模式；与消融论文中的 Baseline1 / Baseline2 / Hybrid / Full 一一对应。";
+      visual.appendChild(leg);
+
+      const grid = document.createElement("div");
+      grid.className = "grid-modes";
+      results.forEach((item, idx) => {
+        const cfg = MODE_BATCH[idx];
+        const data = item.data;
+        const card = document.createElement("div");
+        card.className = "mode-card";
+        const head = document.createElement("header");
+        head.textContent = cfg.title + " — " + cfg.sub;
+        card.appendChild(head);
+        const sub = document.createElement("div");
+        sub.className = "body";
+        sub.textContent = "命中 " + (data.docs_preview ? data.docs_preview.length : 0) + " 条 · profile " + ((data.meta && data.meta.profile) || "—");
+        card.appendChild(sub);
+        const chunks = document.createElement("div");
+        chunks.className = "chunks";
+        renderDocChunksInto(chunks, data);
+        card.appendChild(chunks);
+        grid.appendChild(card);
+      });
+      visual.appendChild(grid);
+    }
+
+    async function postEval(body) {
+      const resp = await fetch(apiBase() + "/api/eval/single", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const text = await resp.text();
+      if (!resp.ok) throw new Error("HTTP " + resp.status + "\n" + text);
+      return JSON.parse(text);
+    }
+
+    function parseKeywordTerms(raw) {
+      if (!raw || !raw.trim()) return [];
+      return raw
+        .split(/[\n,，;；]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    }
+
+    /** 与主前端一致：限定文献按行解析，不在英文逗号处切开（文件名内常有逗号）。 */
+    function parseSourceFilters(raw) {
+      if (!raw || !raw.trim()) return [];
+      const out = [];
+      for (const line of raw.split(/\r?\n/)) {
+        const seg = line.trim();
+        if (!seg) continue;
+        for (const piece of seg.split(/[;；]/)) {
+          const t = piece.trim();
+          if (t) out.push(t);
+        }
+      }
+      return out;
+    }
+
+    function buildCommonBody() {
+      const question = document.getElementById("q").value.trim();
+      if (!question) throw new Error("请输入问题");
+      const suite = suiteEl.value;
+      let top_n = Math.min(50, Math.max(1, parseInt(document.getElementById("topN").value || "10", 10)));
+      if (suite === "terminology") top_n = 30;
+      const doc_preview_chars = Math.max(0, parseInt(document.getElementById("docPreviewChars").value || "0", 10));
+      return { question, top_n, doc_preview_chars };
+    }
+
+    /** @param {{ allowKeywords: boolean }} opts */
+    function appendFilterFields(body, opts) {
+      const sf = parseSourceFilters(document.getElementById("sourceFilters").value);
+      if (sf.length) body.source_filters = sf;
+      if (opts.allowKeywords) {
+        const kw = parseKeywordTerms(document.getElementById("keywordTerms").value);
+        if (kw.length) body.keyword_terms = kw;
+      }
+    }
+
+    function syncKeywordFieldState() {
+      const suite = suiteEl.value;
+      const mode = document.getElementById("mode").value;
+      const kt = document.getElementById("keywordTerms");
+      const hint = document.getElementById("keywordHint");
+      const allow = (suite === "ablation" || suite === "terminology") && mode === "full_rrf";
+      kt.disabled = !allow;
+      kt.classList.toggle("dim", !allow);
+      if (allow) {
+        hint.innerHTML =
+          '仅在 <strong>Full（full_rrf）</strong> 时与正式前端一致传入检索；其它模式不发送限定关键词。';
+      } else {
+        hint.innerHTML =
+          "当前检索模式不是 full_rrf：<strong>限定关键词不会发往服务端</strong>。切换到 Full 后可填。";
+      }
+    }
+
+    document.getElementById("run").addEventListener("click", async () => {
+      try {
+        const common = buildCommonBody();
+        const suite = suiteEl.value;
+        const body = { ...common, suite };
+        body.mode = document.getElementById("mode").value;
+        appendFilterFields(body, { allowKeywords: body.mode === "full_rrf" });
+
+        document.getElementById("out").textContent = "请求中…";
+        document.getElementById("resultVisual").innerHTML = "";
+        const parsed = await postEval(body);
+        document.getElementById("out").textContent = JSON.stringify(parsed, null, 2);
+        showShell();
+
+        if (suite === "terminology") {
+          setSummary(
+            '<span class="badge violet">② 术语</span><span class="badge">30 条/模式</span><span class="badge blue">' +
+              esc(parsed.mode_label || parsed.mode) +
+              "</span>",
+            ""
+          );
+          renderSingleRetrievalLike(
+            parsed,
+            "<strong>实验 ② 术语</strong>：每模式固定 30 条片段；批量请用 CLI <code>--suite terminology</code>（默认 top_n=30）。"
+          );
+        } else {
+          setSummary(
+            '<span class="badge teal">① 消融</span><span class="badge blue">' +
+              esc(parsed.mode_label || parsed.mode) +
+              "</span><span class='badge'>" +
+              (parsed.docs_preview ? parsed.docs_preview.length : 0) +
+              " 条</span>",
+            ""
+          );
+          renderSingleRetrievalLike(parsed, "<strong>实验 ① 消融</strong>：当前为单一检索模式；可用「一键四模式」看全表。");
+        }
+      } catch (e) {
+        document.getElementById("out").textContent = String(e);
+        showShell();
+        document.getElementById("resultVisual").innerHTML = "<p class='hint'>" + esc(String(e)) + "</p>";
+      }
+    });
+
+    document.getElementById("runBatchModes").addEventListener("click", async () => {
+      const suite = suiteEl.value;
+      if (suite !== "ablation" && suite !== "terminology") return;
+      try {
+        const common = buildCommonBody();
+        document.getElementById("out").textContent = "批量请求中（0/4）…";
+        showShell();
+        const results = [];
+        for (let i = 0; i < MODE_BATCH.length; i++) {
+          document.getElementById("out").textContent = "批量请求中（" + (i + 1) + "/4）…";
+          const body = { ...common, suite, mode: MODE_BATCH[i].mode };
+          appendFilterFields(body, { allowKeywords: MODE_BATCH[i].mode === "full_rrf" });
+          const data = await postEval(body);
+          results.push({ cfg: MODE_BATCH[i], data });
+        }
+        document.getElementById("out").textContent = JSON.stringify(
+          results.map((r) => ({ mode: r.cfg.mode, response: r.data })),
+          null,
+          2
+        );
+        const name = suite === "terminology" ? "② 术语 · 四模式（每格 30 条）" : "① 消融 · 四模式";
+        setSummary(
+          '<span class="badge teal">' +
+            esc(name) +
+            '</span><span class="badge">4 次请求</span><span class="badge blue">Baseline1→2→Hybrid→Full</span>',
+          ""
+        );
+        renderMultiModes(
+          results,
+          suite === "terminology" ? "② 术语（每模式 30 条）" : "① 消融"
+        );
+      } catch (e) {
+        document.getElementById("out").textContent = String(e);
+        document.getElementById("resultVisual").innerHTML = "<p class='hint'>" + esc(String(e)) + "</p>";
+      }
+    });
+  </script>
+</body>
+</html>

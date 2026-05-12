@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Top-K 对比 · Full vs B2（重排后进模）</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --card: #fff;
+      --border: #cbd5e1;
+      --muted: #64748b;
+      --full: #0d9488;
+      --b2: #b45309;
+      --accent: #1d4ed8;
+    }
+    body {
+      font-family: system-ui, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 16px;
+      max-width: 1600px;
+      margin-inline: auto;
+      background: var(--bg);
+      color: #0f172a;
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 8px; }
+    .hint { color: var(--muted); font-size: 12px; font-weight: 400; }
+    label { display: block; margin-top: 10px; font-weight: 600; font-size: 14px; }
+    textarea, select, input { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+    textarea { min-height: 72px; }
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+    button {
+      padding: 10px 16px; cursor: pointer; border-radius: 8px; border: 1px solid var(--border);
+      background: #fff; font-weight: 600; font-size: 14px;
+    }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+    @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+    .col {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--card);
+    }
+    .col header {
+      padding: 10px 14px;
+      font-weight: 700;
+      font-size: 14px;
+      color: #fff;
+    }
+    .col.full header { background: var(--full); }
+    .col.b2 header { background: var(--b2); }
+    .col .sub {
+      padding: 8px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .chunks { padding: 10px 12px; max-height: 78vh; overflow-y: auto; }
+    .chunk {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      background: #fafafa;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .chunk-meta { color: var(--muted); font-size: 11px; margin-bottom: 4px; word-break: break-all; }
+    .chunk-text { white-space: pre-wrap; word-break: break-word; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #e2e8f0;
+      margin-right: 6px;
+    }
+    .strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px;
+      background: linear-gradient(135deg, #ecfdf5 0%, #fff7ed 100%);
+      border: 1px solid #a7f3d0;
+      border-radius: 12px;
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    details.raw { margin-top: 12px; }
+    details.raw summary { cursor: pointer; font-weight: 600; color: var(--muted); }
+    pre.json-pre {
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 12px;
+      overflow: auto;
+      font-size: 11px;
+      white-space: pre-wrap;
+      border-radius: 8px;
+      max-height: 40vh;
+    }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 700px) { .row2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Post-rerank Top-K 对比</h1>
+    <p class="hint">
+      调用 <code>/api/eval/top16_compare</code>：固定 <code>use_rerank=true</code>、<code>use_sep_reference=false</code>，与正式管线一致的「进模前」片段。
+      左：<strong>Full</strong>（混合 + RRF + 重排）；右：<strong>B2</strong>（<code>sparse_only</code> + 同一套重排）。请先启动后端 <code>http://127.0.0.1:8000</code>。
+    </p>
+
+    <label>API 根地址</label>
+    <input type="text" id="apiBase" value="http://127.0.0.1:8000" />
+
+    <div class="row2">
+      <div>
+        <label>final_k（进模条数）</label>
+        <input type="number" id="finalK" value="16" min="1" max="200" />
+      </div>
+      <div>
+        <label>片段预览长度（0 = 全文）</label>
+        <input type="number" id="previewChars" value="1200" min="0" max="500000" />
+      </div>
+    </div>
+
+    <label>限定文献（可选，每行一条）</label>
+    <textarea id="sourceFilters" rows="2" placeholder="与主前端一致：每行一条文件名片段"></textarea>
+
+    <label>限定关键词（可选，逗号/换行分隔）</label>
+    <textarea id="keywordTerms" rows="2" placeholder="与 /api/answer 一致，会进入检索词合并"></textarea>
+
+    <label>问题</label>
+    <textarea id="q" rows="6" placeholder="输入用于对比的问题"></textarea>
+
+    <div class="btn-row">
+      <button type="button" class="primary" id="run">运行对比</button>
+      <button type="button" id="copyJson">复制 JSON</button>
+    </div>
+  </div>
+
+  <div id="resultArea" style="display: none;">
+    <div class="strip" id="summaryStrip"></div>
+    <div class="grid">
+      <div class="col full">
+        <header>Full · hybrid + RRF + rerank</header>
+        <div class="sub" id="fullSub"></div>
+        <div class="chunks" id="fullChunks"></div>
+      </div>
+      <div class="col b2">
+        <header>B2 · sparse_only + rerank</header>
+        <div class="sub" id="b2Sub"></div>
+        <div class="chunks" id="b2Chunks"></div>
+      </div>
+    </div>
+    <details class="raw">
+      <summary>原始 JSON（调试 / 存档）</summary>
+      <pre class="json-pre" id="out"></pre>
+    </details>
+  </div>
+
+  <script>
+    const apiBase = () => document.getElementById("apiBase").value.replace(/\/$/, "");
+
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = s == null ? "" : String(s);
+      return d.innerHTML;
+    }
+
+    function parseLines(raw) {
+      if (!raw || !raw.trim()) return [];
+      const out = [];
+      for (const line of raw.split(/\r?\n/)) {
+        const seg = line.trim();
+        if (!seg) continue;
+        for (const piece of seg.split(/[;；]/)) {
+          const t = piece.trim();
+          if (t) out.push(t);
+        }
+      }
+      return out;
+    }
+
+    function parseKeywordTerms(raw) {
+      if (!raw || !raw.trim()) return [];
+      return raw
+        .split(/[\n,，;；]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    }
+
+    function renderColumn(container, data, colorLabel) {
+      container.innerHTML = "";
+      const docs = (data && data.docs) || [];
+      if (!docs.length) {
+        container.innerHTML = "<p class='hint'>无片段（语料或检索为空）。</p>";
+        return;
+      }
+      docs.forEach((d, i) => {
+        const div = document.createElement("div");
+        div.className = "chunk";
+        const trunc = d.text_was_truncated ? " · 正文已截断" : "";
+        div.innerHTML =
+          '<div class="chunk-meta"><span class="badge">' +
+          colorLabel +
+          (i + 1) +
+          "</span>" +
+          esc(d.chunk_id) +
+          " · " +
+          esc(d.source) +
+          " · p." +
+          esc(d.page) +
+          trunc +
+          "</div>" +
+          '<div class="chunk-text">' +
+          esc(d.text) +
+          "</div>";
+        container.appendChild(div);
+      });
+    }
+
+    let lastPayload = null;
+
+    document.getElementById("run").addEventListener("click", async () => {
+      const question = document.getElementById("q").value.trim();
+      if (!question) {
+        alert("请输入问题");
+        return;
+      }
+      const final_k = Math.min(200, Math.max(1, parseInt(document.getElementById("finalK").value || "16", 10)));
+      const doc_preview_chars = Math.max(0, parseInt(document.getElementById("previewChars").value || "1200", 10));
+      const body = {
+        question,
+        final_k,
+        doc_preview_chars,
+        auto_extract_keywords: true,
+        answer_style: "哲学论述",
+      };
+      const sf = parseLines(document.getElementById("sourceFilters").value);
+      if (sf.length) body.source_filters = sf;
+      const kw = parseKeywordTerms(document.getElementById("keywordTerms").value);
+      if (kw.length) body.keyword_terms = kw;
+
+      document.getElementById("out").textContent = "请求中…";
+      document.getElementById("resultArea").style.display = "block";
+
+      try {
+        const resp = await fetch(apiBase() + "/api/eval/top16_compare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const text = await resp.text();
+        if (!resp.ok) throw new Error("HTTP " + resp.status + "\n" + text);
+        const data = JSON.parse(text);
+        lastPayload = data;
+
+        document.getElementById("out").textContent = JSON.stringify(data, null, 2);
+
+        const cfg = data.config || {};
+        document.getElementById("summaryStrip").innerHTML =
+          "<span class='badge'>final_k=" +
+          esc(cfg.final_k) +
+          "</span>" +
+          "<span class='badge'>rerank</span>" +
+          "<span class='badge'>SEP off</span>" +
+          "<span class='badge'>Full 条数 " +
+          ((data.full && data.full.count) || 0) +
+          "</span>" +
+          "<span class='badge'>B2 条数 " +
+          ((data.b2_sparse_only && data.b2_sparse_only.count) || 0) +
+          "</span>";
+
+        const mf = (data.full && data.full.meta) || {};
+        const mb = (data.b2_sparse_only && data.b2_sparse_only.meta) || {};
+        document.getElementById("fullSub").textContent =
+          "profile=" +
+          (mf.profile || "—") +
+          " · reranked=" +
+          String(mf.reranked) +
+          " · hybrid=" +
+          String(mf.hybrid) +
+          " · keywords: " +
+          ((mf.keywords_used || []).join(", ") || "—");
+        document.getElementById("b2Sub").textContent =
+          "profile=" +
+          (mb.profile || "—") +
+          " · reranked=" +
+          String(mb.reranked) +
+          " · hybrid=" +
+          String(mb.hybrid) +
+          " · keywords: " +
+          ((mb.keywords_used || []).join(", ") || "—");
+
+        renderColumn(document.getElementById("fullChunks"), data.full, "F");
+        renderColumn(document.getElementById("b2Chunks"), data.b2_sparse_only, "B");
+      } catch (e) {
+        document.getElementById("out").textContent = String(e);
+        alert(String(e));
+      }
+    });
+
+    document.getElementById("copyJson").addEventListener("click", async () => {
+      if (!lastPayload) {
+        alert("请先运行对比");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(lastPayload, null, 2));
+        alert("已复制 JSON");
+      } catch (e) {
+        alert(String(e));
+      }
+    });
+  </script>
+</body>
+</html>

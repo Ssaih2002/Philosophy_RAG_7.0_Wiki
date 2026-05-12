@@ -1,0 +1,1606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Philosophy RAG 助手</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background-color: #f5f5f7;
+      color: #1f2933;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      padding: 12px 24px;
+      background: linear-gradient(90deg, #111827, #1f2937);
+      color: #f9fafb;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .header-subtitle {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .layout {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .leftbar {
+      flex: 0 0 360px;
+      min-height: 0;
+      border-right: 1px solid #e5e7eb;
+      background-color: #ffffff;
+      padding: 16px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      position: relative;
+      z-index: 2;
+    }
+
+    .leftbar.collapsed {
+      flex-basis: 56px;
+      padding: 10px 8px;
+    }
+
+    .leftbar.collapsed .sidebar-group {
+      border-top: none;
+      padding-top: 0;
+      margin-top: 0;
+    }
+
+    .leftbar.collapsed .sidebar-title,
+    .leftbar.collapsed .sidebar-subtitle,
+    .leftbar.collapsed .card-title,
+    .leftbar.collapsed .debug-pre,
+    .leftbar.collapsed #libraryPanel,
+    .leftbar.collapsed #memoryHistoryPanel,
+    .leftbar.collapsed #librarySourcesList,
+    .leftbar.collapsed #trashList {
+      display: none !important;
+    }
+
+    .leftbar.collapsed .library-toolbar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .leftbar-toggle {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .side-toggle-btn {
+      width: 40px;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      cursor: pointer;
+      font-size: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.15s ease, transform 0.05s ease;
+    }
+
+    .side-toggle-btn:hover {
+      background: #f9fafb;
+    }
+
+    .sidebar.collapsed {
+      flex-basis: 56px;
+      padding: 10px 8px;
+    }
+
+    .sidebar.collapsed .sidebar-group,
+    .sidebar.collapsed .sidebar-title,
+    .sidebar.collapsed .sidebar-subtitle,
+    .sidebar.collapsed .excerpt-list,
+    .sidebar.collapsed .excerpt-detail-card,
+    .sidebar.collapsed .debug-pre {
+      display: none !important;
+    }
+
+    .main {
+      flex: 2.2;
+      padding: 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+
+    .sidebar {
+      flex: 1;
+      min-height: 0; /* flex 子项可收缩，右侧栏才能出现纵向滚动条 */
+      border-left: 1px solid #e5e7eb;
+      background-color: #ffffff;
+      padding: 16px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .sidebar-group + .sidebar-group {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    /* 避免主栏绝对定位元素遮挡侧栏按钮（部分浏览器下点击无响应） */
+    .library-toolbar {
+      position: relative;
+      z-index: 2;
+    }
+
+    /*
+      原生 <select> 不要复用 .btn：.btn 使用 inline-flex，在 Edge/部分环境下会导致
+      下拉展开后看不到 option 文案（看起来像「空列表」）。
+    */
+    select.library-sources-select {
+      display: inline-block;
+      vertical-align: middle;
+      min-width: 11rem;
+      max-width: 100%;
+      padding: 6px 28px 6px 10px;
+      font-size: 13px;
+      line-height: 1.35;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      background-color: #ffffff;
+      color: #111827;
+      cursor: pointer;
+      box-sizing: border-box;
+      appearance: auto;
+    }
+
+    select.library-sources-select option {
+      color: #111827;
+      background: #ffffff;
+    }
+
+    .debugbar {
+      flex: 1;
+      border-left: 1px solid #e5e7eb;
+      background-color: #ffffff;
+      padding: 16px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
+
+    .input-card, .answer-card, .excerpt-detail-card {
+      background-color: #ffffff;
+      border-radius: 10px;
+      padding: 14px 16px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+      border: 1px solid #e5e7eb;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #111827;
+    }
+
+    .question-input {
+      width: 100%;
+      box-sizing: border-box;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      padding: 8px 10px;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 60px;
+      max-height: 160px;
+      outline: none;
+    }
+
+    .question-input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 1px #2563eb20;
+    }
+
+    .actions {
+      margin-top: 8px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      border-radius: 999px;
+      border: none;
+      padding: 6px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      background: #2563eb;
+      color: white;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+    }
+
+    .btn.secondary {
+      background: #ffffff;
+      color: #111827;
+      border: 1px solid #d1d5db;
+    }
+
+    .btn.secondary:hover:not(:disabled) {
+      background: #f9fafb;
+    }
+
+    .btn:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    .btn:hover:not(:disabled) {
+      background: #1d4ed8;
+      box-shadow: 0 1px 4px rgba(37, 99, 235, 0.3);
+      transform: translateY(-0.5px);
+    }
+
+    .answer-content {
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .placeholder {
+      font-size: 13px;
+      color: #9ca3af;
+    }
+
+    .sidebar-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #111827;
+    }
+
+    .sidebar-subtitle {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 8px;
+    }
+
+    .excerpt-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .excerpt-item {
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      padding: 8px 10px;
+      cursor: pointer;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+      font-size: 12px;
+      background-color: #f9fafb;
+    }
+
+    .excerpt-item:hover {
+      background-color: #eff6ff;
+      border-color: #3b82f6;
+    }
+
+    .excerpt-item.active {
+      background-color: #dbeafe;
+      border-color: #2563eb;
+    }
+
+    .excerpt-meta {
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: #111827;
+    }
+
+    .excerpt-text {
+      max-height: 4.2em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .excerpt-detail-text {
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    .footer {
+      padding: 4px 16px;
+      font-size: 11px;
+      color: #9ca3af;
+      text-align: right;
+      border-top: 1px solid #e5e7eb;
+      background-color: #f9fafb;
+    }
+
+    .status-text {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .dropzone {
+      margin-top: 10px;
+      border: 2px dashed #cbd5e1;
+      border-radius: 10px;
+      padding: 18px 14px;
+      text-align: center;
+      font-size: 13px;
+      color: #64748b;
+      background: #f8fafc;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .dropzone:hover:not(.disabled) {
+      border-color: #94a3b8;
+      background: #f1f5f9;
+    }
+
+    .dropzone.dragover {
+      border-color: #2563eb;
+      background: #eff6ff;
+      color: #1e40af;
+    }
+
+    .dropzone.disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .dropzone code {
+      font-size: 12px;
+    }
+
+    .ingest-progress-wrap {
+      margin-top: 10px;
+      display: none;
+    }
+
+    .ingest-progress-wrap.visible {
+      display: block;
+    }
+
+    .ingest-progress-wrap progress {
+      width: 100%;
+      height: 10px;
+      border-radius: 6px;
+      overflow: hidden;
+      accent-color: #2563eb;
+    }
+
+    .ingest-progress-label {
+      font-size: 12px;
+      color: #475569;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    .upload-hint {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 6px;
+    }
+
+    .keyword-input {
+      width: 100%;
+      box-sizing: border-box;
+      border-radius: 8px;
+      border: 1px solid #d1d5db;
+      padding: 8px 10px;
+      font-size: 13px;
+      resize: vertical;
+      min-height: 44px;
+      max-height: 100px;
+      outline: none;
+    }
+
+    .keyword-input:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 1px #2563eb20;
+    }
+
+    .option-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      align-items: center;
+      margin-top: 8px;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    .option-row label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .retrieval-hint {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+
+    .debug-pre {
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px;
+      color: #374151;
+    }
+
+    .debugbar.hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="header-title">Philosophy RAG 助手</div>
+      <div class="header-subtitle">本地 RAG + 引用文献片段侧边栏 + 一键 Ingest</div>
+    </div>
+    <div style="font-size: 11px; opacity: 0.7;">
+      后端: FastAPI · LLM: Gemini
+    </div>
+  </div>
+
+  <!-- 兼容性自检条：用“最基础 JS”先确认脚本是否能执行 -->
+  <div style="padding:6px 24px; font-size:12px; background:#fff7ed; border-bottom:1px solid #fed7aa; color:#7c2d12;">
+    <span style="font-weight:600;">前端自检：</span>
+    <span id="jsCompatBanner">未加载（若一直不变，说明浏览器禁用 JS 或拦截脚本）</span>
+  </div>
+  <script>
+    (function () {
+      var el = document.getElementById("jsCompatBanner");
+      if (!el) return;
+      var ua = navigator.userAgent || "";
+      var isIEEngine = !!document.documentMode || ua.indexOf("Trident/") >= 0;
+      if (isIEEngine) {
+        el.textContent =
+          "检测到 IE 内核（很可能是 Edge 的 IE 模式）：该模式不支持 const/let 等语法。请关闭 IE 模式后再打开本文件。";
+        return;
+      }
+      el.textContent = "基础脚本已运行，正在解析页面…";
+      function safeBool(v) { try { return !!v; } catch (e) { return false; } }
+      function hasModuleSupport() {
+        // Conservative feature check: module scripts + a few modern APIs the main script relies on.
+        var s = document.createElement("script");
+        var mod = "noModule" in s;
+        var syntaxOk = true;
+        try {
+          // If this throws, the engine cannot even parse modern syntax used in the main script.
+          // (parse errors here are catchable because we compile via Function)
+          /* eslint-disable no-new-func */
+          new Function("const a=1; let b=2; return a+b;");
+          new Function("var o={a:{b:1}}; return o?.a?.b;");
+          new Function("var a=null; var b=a ?? 3; return b;");
+          new Function("return (x)=>x+1;");
+          /* eslint-enable no-new-func */
+        } catch (e) {
+          syntaxOk = false;
+        }
+        var ok = mod &&
+          safeBool(window.fetch) &&
+          safeBool(window.Promise) &&
+          safeBool(window.TextDecoder) &&
+          safeBool((window.ReadableStream && (ReadableStream.prototype || {}).getReader) || (window.Response && (Response.prototype || {}).body)) &&
+          safeBool(window.AbortController);
+        return { mod: mod, ok: ok, syntaxOk: syntaxOk };
+      }
+      function diagSummary() {
+        var m = hasModuleSupport();
+        var parts = [];
+        parts.push("UA=" + ua.slice(0, 120));
+        parts.push("module=" + (m.mod ? "yes" : "no"));
+        parts.push("modernAPIs=" + (m.ok ? "ok" : "missing"));
+        parts.push("syntax=" + (m.syntaxOk ? "ok" : "fail"));
+        return parts.join(" | ");
+      }
+      function probeApiHealth(cb) {
+        // Avoid hard-failing if backend is down; report status only.
+        try {
+          var xhr = new XMLHttpRequest();
+          xhr.timeout = 1200;
+          xhr.open("GET", "http://127.0.0.1:8000/api/health", true);
+          xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
+            cb("api_health=" + xhr.status);
+          };
+          xhr.onerror = function () { cb("api_health=neterr"); };
+          xhr.ontimeout = function () { cb("api_health=timeout"); };
+          xhr.send();
+        } catch (e) {
+          cb("api_health=err");
+        }
+      }
+      // 只有在“已经解析到页面底部”后仍未启动主脚本，才判定为真正失败
+      function maybeReport() {
+        if (!window.__REACHED_BOTTOM__) return;
+        if (window.__FALLBACK_ACTIVE__) return;
+        if (window.__MAIN_SCRIPT_STARTED__) return;
+        var base =
+          "主脚本未启动：可能是兼容模式/企业策略拦截 module，或主脚本运行期异常。";
+        var hint =
+          "若你确定未开启 IE 模式，请检查：是否启用企业站点列表/兼容视图、是否有安全软件/扩展阻止脚本、是否可访问后端 127.0.0.1:8000。";
+        el.textContent = base + "（" + diagSummary() + "）";
+        probeApiHealth(function (h) {
+          el.textContent = base + "（" + diagSummary() + " | " + h + "）" + " " + hint;
+        });
+      }
+      // 给足够时间让浏览器解析到页面底部（本页较长）
+      setTimeout(maybeReport, 6000);
+      // 若已经到底部且仍未启动，尽快提示
+      window.addEventListener("load", function () {
+        setTimeout(maybeReport, 50);
+      });
+    })();
+  </script>
+
+  <div class="layout">
+    <div class="leftbar" id="leftbar">
+      <div class="leftbar-toggle">
+        <div style="font-size:12px; color:#6b7280;">会话与记忆</div>
+        <button type="button" id="toggleLeftbarBtn" class="side-toggle-btn" title="折叠/展开左侧栏">⟨</button>
+      </div>
+      <div class="sidebar-group">
+        <div class="sidebar-title">会话 / 记忆 / Wiki</div>
+        <div class="sidebar-subtitle">
+          左侧为会话与记忆区：多会话切换、当前会话历史、以及跨会话共享的用户 Wiki（用于提示词注入，不作为可引用证据）。
+        </div>
+        <div class="card-title" style="margin-top:10px; font-size:13px;">会话（Sessions）</div>
+        <div class="library-toolbar" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px;">
+          <select id="sessionSelect" class="library-sources-select" title="选择会话（conversation_id）"></select>
+          <button type="button" id="newSessionBtn" class="btn secondary" style="padding:5px 10px;">新建</button>
+          <button type="button" id="autoNameSessionBtn" class="btn secondary" style="padding:5px 10px;" title="用模型为当前会话生成一个简短标题">自动命名</button>
+          <button type="button" id="renameSessionBtn" class="btn secondary" style="padding:5px 10px;">重命名</button>
+          <button type="button" id="deleteSessionBtn" class="btn secondary" style="padding:5px 10px;">删除</button>
+        </div>
+
+        <div class="library-toolbar" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px;">
+          <button type="button" id="refreshMemoryBtn" class="btn secondary" style="padding:5px 10px;">刷新</button>
+          <button type="button" id="compactWikiBtn" class="btn secondary" style="padding:5px 10px;">整合 Wiki（去重/合并）</button>
+          <span id="memoryStatus" class="status-text"></span>
+        </div>
+        <div id="memoryPaths" class="debug-pre" style="margin-top:6px;">paths：暂无</div>
+
+        <div class="card-title" style="margin-top:10px; font-size:13px;">用户 Wiki（user.md）</div>
+        <div id="memoryWiki" class="debug-pre">暂无</div>
+
+        <div class="card-title" style="margin-top:10px; font-size:13px;">当前会话</div>
+        <div class="library-toolbar" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px;">
+          <button type="button" id="toggleMemoryHistoryBtn" class="btn secondary" style="padding:5px 10px;">展开/收起</button>
+        </div>
+        <div id="memoryHistoryPanel" style="display:none; margin-top:8px;">
+          <div id="memoryHistory" class="debug-pre">暂无</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="input-card">
+        <div class="card-title">步骤 1：构建向量库（ingest）</div>
+        <div style="font-size: 13px; color: #6b7280; margin-bottom: 6px;">
+          点击下方按钮会通过流式接口运行 ingest：加载 <code>data</code> 目录（含下方拖入的文件）下的文档，切分为语义片段，编码并写入 Chroma，并构建 SQLite FTS5 稀疏索引 <code>data/sparse_fts.db</code>。下方进度条与后端阶段同步。
+        </div>
+        <div
+          id="uploadDropzone"
+          class="dropzone"
+          tabindex="0"
+          role="button"
+          aria-label="拖入 PDF 或点击选择文件"
+        >
+          <strong>拖入 PDF / DOCX / JSON / EPUB</strong> 到此处，或点击选择文件<br />
+          <span class="upload-hint">文件会保存到 <code>data/uploads/</code>，与现有 <code>data</code> 文档一并被索引。</span>
+        </div>
+        <input type="file" id="uploadFileInput" multiple accept=".pdf,.docx,.json,.epub,application/pdf" style="display:none;" />
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px;">
+          <label for="libraryIdInput" class="status-text" style="white-space:nowrap;">本次库名（library_id）：</label>
+          <input
+            id="libraryIdInput"
+            type="text"
+            placeholder="例如：graduation dissertation（支持空格，会自动转下划线）"
+            style="flex:1; min-width:220px; padding:7px 10px; border:1px solid #d1d5db; border-radius:8px; font-size:13px;"
+          />
+          <span class="status-text" style="color:#6b7280;">留空=default</span>
+        </div>
+        <label class="option-row" style="margin-top:10px;">
+          <input type="checkbox" id="autoIngestAfterUpload" checked />
+          上传成功后自动运行 Ingest
+        </label>
+        <div id="ingestProgressWrap" class="ingest-progress-wrap">
+          <progress id="ingestProgress" max="100" value="0"></progress>
+          <div id="ingestProgressLabel" class="ingest-progress-label"></div>
+        </div>
+        <div class="actions">
+          <label for="profileSelect" class="status-text">检索配置：</label>
+          <select id="profileSelect" class="btn secondary" style="border-radius:8px; padding:6px 10px;">
+            <option value="quality">quality</option>
+            <option value="fast">fast</option>
+          </select>
+          <button id="ingestButton" class="btn secondary">运行 Ingest</button>
+          <span id="ingestStatus" class="status-text"></span>
+        </div>
+      </div>
+
+      <div class="input-card">
+        <div class="card-title">步骤 2：提出你的哲学问题</div>
+        <textarea id="questionInput" class="question-input" placeholder="例如：康德如何区分现象界与物自身？"></textarea>
+        <div class="card-title" style="margin-top:10px; font-size:13px;">关键词（可选）</div>
+        <textarea id="keywordInput" class="keyword-input" placeholder="手动输入术语，用逗号或换行分隔，例如：noumenon, transcendental idealism&#10;留空时可勾选下方「自动抽取」由模型从问题中抽取检索词。"></textarea>
+        <div class="card-title" style="margin-top:10px; font-size:13px;">限定文件名（可选）</div>
+        <textarea id="sourceFilterInput" class="keyword-input" placeholder="仅在这些文件中检索并作答。每行一条路径或文件名片段（勿用英文逗号分隔多条，因文件名内常有逗号）。同一行多条可用中文/英文分号。"></textarea>
+        <div class="card-title" style="margin-top:10px; font-size:13px;">回答风格（API value 为中文，见后端 academic_prompt）</div>
+        <select id="answerStyleSelect" class="btn secondary" style="border-radius:8px; padding:6px 10px;">
+          <option value="哲学论述" selected>哲学论述（深度论证，脚注体例）</option>
+          <option value="标准问答">标准问答（联网搜索，无本地语料）</option>
+          <option value="斯坦福哲学百科模式">斯坦福哲学百科模式（SEP 专用向量库）</option>
+          <option value="文献综述">文献综述（主题化比较，研究缺口）</option>
+          <option value="盲审审稿">盲审审稿（严格评审用户粘贴稿）</option>
+          <option value="引文补注">引文补注（为来稿仅加脚注，不改写正文）</option>
+          <option value="概念梳理">概念梳理（关键词驱动，引文为主）</option>
+        </select>
+        <div class="card-title" style="margin-top:10px; font-size:13px;">回答模型</div>
+        <select id="answerModelSelect" class="btn secondary" style="border-radius:8px; padding:6px 10px;">
+          <optgroup label="OpenAI（GPT）">
+            <option value="openai:gpt-5.1">gpt-5.1（失败 3 次自动降级到 gpt-5-mini）</option>
+            <option value="openai:gpt-5-mini">gpt-5-mini（不再降级）</option>
+          </optgroup>
+          <optgroup label="DeepSeek">
+            <option value="deepseek:deepseek-reasoner">deepseek-reasoner（最强推理）</option>
+          </optgroup>
+          <optgroup label="Gemini">
+            <option value="gemini:gemini-3.1-pro-preview" selected>gemini-3.1-pro-preview（质量优先 · 新）</option>
+            <option value="gemini:gemini-2.5-pro">gemini-2.5-pro（质量优先）</option>
+            <option value="gemini:gemini-2.5-flash">gemini-2.5-flash（速度优先）</option>
+          </optgroup>
+        </select>
+        <p class="retrieval-hint" style="margin-top:6px;">
+          说明：<strong>Gemini</strong> 同一模型失败 <code>GEMINI_RETRY_MAX_ATTEMPTS</code> 次（默认 3）后自动降级下一档：
+          <code>3.1-pro-preview</code> → <code>2.5-pro</code> → <code>2.5-flash</code>；选 <code>2.5-pro</code> 时仅再降级到 <code>2.5-flash</code>；选 <code>2.5-flash</code> 则不再降级。
+          <code>gpt-5.1</code> 若失败 3 次会自动切到 <code>gpt-5-mini</code>。
+        </p>
+        <div class="option-row">
+          <label><input type="checkbox" id="autoKeywords" checked /> 自动从问题中抽取检索词（稀疏检索）</label>
+          <label><input type="checkbox" id="useHybrid" checked /> 启用混合检索（向量 + FTS5，RRF 融合）</label>
+          <label><input type="checkbox" id="useRerank" checked /> 启用 cross-encoder 重排序</label>
+          <label title="勾选后会在主语料库之外，额外检索 SEP（斯坦福哲学百科）向量库作为弱参照（权重更小，最多保留少量片段）。">
+            <input type="checkbox" id="useSepReference" /> 参照斯坦福哲学百科（SEP）
+          </label>
+          <label title="默认 12288；开启后 24576。超长更慢，且高峰期更易失败/触发限流。">
+            <input type="checkbox" id="ultraLongAnswer" checked /> 超长回答（24576）
+          </label>
+        </div>
+        <p class="retrieval-hint">
+          混合检索用稠密向量召回语义相关片段，用 FTS5 做术语字面匹配，再由 cross-encoder 对候选进行精排；专问术语在文本中的出现时建议填写关键词或开启自动抽取。
+        </p>
+        <div class="actions">
+          <span id="statusText" class="status-text" style="margin-right:auto;"></span>
+          <button id="askButton" class="btn">提问</button>
+        </div>
+      </div>
+
+      <div class="answer-card">
+        <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <span>回答</span>
+          <span id="answerModelBadge" class="status-text">模型：-</span>
+        </div>
+        <div id="answerContent" class="answer-content placeholder">
+          暂无回答，请先在上方输入问题并点击“提问”。
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="leftbar-toggle">
+        <div style="font-size:12px; color:#6b7280;">证据片段</div>
+        <button type="button" id="toggleRightbarBtn" class="side-toggle-btn" title="折叠/展开右侧栏">⟩</button>
+      </div>
+      <div class="sidebar-group">
+        <div class="sidebar-title">Library（向量库）</div>
+        <div class="sidebar-subtitle" style="margin-bottom:10px;">
+          多选 RRF · 文献管理 · 语言检测。选择一个或多个索引库参与检索；可展开查看库内文献并删除（会移动到 trash）。
+        </div>
+        <div class="library-toolbar" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button type="button" id="refreshLibrariesBtn" class="btn secondary" style="padding:5px 10px;">刷新库列表</button>
+          <button type="button" id="toggleLibraryPanelBtn" class="btn secondary" style="padding:5px 10px;">展开/收起</button>
+        </div>
+        <div id="libraryPanel" style="margin-top:8px; display:none;">
+          <div style="font-size:12px; color:#6b7280; margin-bottom:6px;">多选后会做加权融合（RRF）。</div>
+          <div id="libraryList" class="excerpt-list"></div>
+          <div class="card-title" style="margin-top:10px; font-size:13px;">库语言（Auto+B2）</div>
+          <div style="font-size:11px; color:#6b7280; margin-bottom:6px; line-height:1.45;">
+            用于跨语检索：当库内以德/英为主而你用中文提问时，可自动补做多语查询。语言分布会缓存到本地（旧库首次检测后复用）。
+          </div>
+          <div class="library-toolbar" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button type="button" id="detectLibraryLangBtn" class="btn secondary" style="padding:5px 10px;">检测已勾选库语言</button>
+            <span id="libraryLangStatus" class="status-text"></span>
+          </div>
+          <div id="libraryLangProfile" class="debug-pre" style="margin-top:6px;">language_profile：暂无</div>
+          <div class="card-title" style="margin-top:10px; font-size:13px;">库内文献（sources）</div>
+          <div style="font-size:11px; color:#6b7280; margin-bottom:6px; line-height:1.45;">
+            在下方下拉框<strong>选择库</strong>后会<strong>自动加载</strong>文献列表；也可点「加载」刷新。
+          </div>
+          <div class="library-toolbar" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <select id="librarySourcesSelect" class="library-sources-select" title="选择要查看文献列表的向量库">
+              <option value="" disabled>（页面加载后将自动请求库列表；若长久停留请见下方说明）</option>
+            </select>
+            <button type="button" id="loadSourcesBtn" class="btn secondary" style="padding:5px 10px; position:relative; z-index:2;">加载</button>
+          </div>
+          <div id="librarySourcesList" class="excerpt-list" style="margin-top:8px;"></div>
+          <div class="card-title" style="margin-top:10px; font-size:13px;">回收站（删除的文献，可恢复）</div>
+          <div class="library-toolbar" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px;">
+            <button type="button" id="refreshTrashBtn" class="btn secondary" style="padding:5px 10px;">刷新回收站</button>
+          </div>
+          <div id="trashList" class="excerpt-list" style="font-size:12px;"></div>
+        </div>
+      </div>
+
+      <div class="sidebar-group">
+        <div class="sidebar-title">引用文献片段</div>
+        <div class="sidebar-subtitle" id="sidebarSubtitle">回答生成后显示片段</div>
+        <div id="excerptList" class="excerpt-list"></div>
+        <div class="excerpt-detail-card" id="excerptDetailCard" style="display:none; margin-top:10px;">
+          <div class="card-title" id="excerptDetailTitle">选中文段全文</div>
+          <div id="excerptDetailText" class="excerpt-detail-text"></div>
+        </div>
+      </div>
+
+      <div class="sidebar-group">
+        <div class="sidebar-title">关键词全量命中（独立引用）</div>
+        <div class="sidebar-subtitle" id="keywordHitsSubtitle">用于核对覆盖范围</div>
+        <div id="keywordSourceStats" class="debug-pre" style="margin-bottom:8px;">source 统计：暂无</div>
+        <div id="keywordHitList" class="excerpt-list"></div>
+      </div>
+    </div>
+
+    <div class="debugbar hidden" id="debugBar">
+      <div class="sidebar-title">检索调试面板</div>
+      <div class="sidebar-subtitle">
+        用于检查 dense / sparse / 融合 / rerank 是否按预期运行。
+      </div>
+      <div class="card-title" style="margin-top:6px; font-size:13px;">Auto+B2 预览（多语查询/术语锚点）</div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <select id="autoB2PreviewSelect" class="btn secondary" style="border-radius:8px; padding:6px 10px;">
+          <option value="none" selected>（不显示）</option>
+          <option value="single_dense">本次（单库/库内）dense_queries</option>
+          <option value="single_sparse">本次（单库/库内）sparse_terms</option>
+          <option value="single_glossary">本次（单库/库内）glossary</option>
+          <option value="multi_groups">多库：语言组概览</option>
+          <option value="multi_preview">多库：语言组预览（dense/sparse/glossary）</option>
+        </select>
+        <span class="status-text" id="autoB2PreviewStatus"></span>
+      </div>
+      <div id="autoB2PreviewOutput" class="debug-pre" style="margin-top:6px;">（回答后可在此查看）</div>
+      <div id="debugPanel" class="debug-pre">暂无调试信息。</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    本地运行 · Ingest 与问答均通过后端 API 完成
+  </div>
+
+  <script>
+    // Main script loader marker for ES5 fallback timing.
+    window.__MAIN_SCRIPT_LOADER__ = true;
+    // Avoid dynamic DOM-insert (createElement/appendChild) which some environments may block.
+    // Use document.write during parsing to emit both module + classic script tags,
+    // with cache-busting tied to frontend.html query (?v=...).
+    (function () {
+      var m = (String(location.search || "").match(/[?&]v=([^&]+)/) || []);
+      var v = m[1] || String(Date.now());
+      var cb = String(Date.now()); // always bust cache for main.js
+      try {
+        document.write('<script type="module" src="./main.js?v=' + encodeURIComponent(v) + '&cb=' + encodeURIComponent(cb) + '"><\\/script>');
+        document.write('<script src="./main.js?v=' + encodeURIComponent(v) + '&cb=' + encodeURIComponent(cb) + '&classic=1" defer><\\/script>');
+      } catch (e) {}
+    })();
+  </script>
+
+  <!-- ES5 兜底：无条件加载，但仅在主脚本未启动时接管 -->
+  <script>
+    (function () {
+      function activateFallback(reason) {
+        if (window.__FALLBACK_ACTIVE__) return;
+        window.__FALLBACK_ACTIVE__ = true;
+        // 一旦兜底接管，就阻止顶部自检继续报“主脚本解析失败”
+        window.__MAIN_SCRIPT_STARTED__ = true;
+        var banner = document.getElementById("jsCompatBanner");
+        var ver = "ES5兜底-v2";
+        function safeBool(v) { try { return !!v; } catch (e) { return false; } }
+        function hasModuleSupport() {
+          var s = document.createElement("script");
+          var mod = ("noModule" in s);
+          var syntaxOk = true;
+          try {
+            /* eslint-disable no-new-func */
+            new Function("const a=1; let b=2; return a+b;");
+            new Function("var o={a:{b:1}}; return o?.a?.b;");
+            new Function("var a=null; var b=a ?? 3; return b;");
+            new Function("return (x)=>x+1;");
+            /* eslint-enable no-new-func */
+          } catch (e) {
+            syntaxOk = false;
+          }
+          var ok = mod &&
+            safeBool(window.fetch) &&
+            safeBool(window.Promise) &&
+            safeBool(window.TextDecoder) &&
+            safeBool(window.AbortController);
+          return { mod: mod, ok: ok, syntaxOk: syntaxOk };
+        }
+        function diagSummary() {
+          var ua = "";
+          try { ua = (navigator.userAgent || ""); } catch (e) { ua = ""; }
+          var m = hasModuleSupport();
+          var parts = [];
+          parts.push("UA=" + String(ua).slice(0, 120));
+          parts.push("module=" + (m.mod ? "yes" : "no"));
+          parts.push("modernAPIs=" + (m.ok ? "ok" : "missing"));
+          parts.push("syntax=" + (m.syntaxOk ? "ok" : "fail"));
+          return parts.join(" | ");
+        }
+        function probeApiHealth(cb) {
+          try {
+            var xhr = new XMLHttpRequest();
+            xhr.timeout = 1200;
+            xhr.open("GET", "http://127.0.0.1:8000/api/health", true);
+            xhr.onreadystatechange = function () {
+              if (xhr.readyState !== 4) return;
+              cb("api_health=" + xhr.status);
+            };
+            xhr.onerror = function () { cb("api_health=neterr"); };
+            xhr.ontimeout = function () { cb("api_health=timeout"); };
+            xhr.send();
+          } catch (e) {
+            cb("api_health=err");
+          }
+        }
+        if (banner) {
+          banner.textContent = "已启用兼容脚本（" + ver + "）： " + reason + "（" + diagSummary() + "）";
+          probeApiHealth(function (h) {
+            banner.textContent = "已启用兼容脚本（" + ver + "）： " + reason + "（" + diagSummary() + " | " + h + "）";
+          });
+        }
+        // 让用户能肉眼确认“侧边栏会被兜底接管”
+        var sb = document.getElementById("sidebarSubtitle");
+        if (sb) sb.textContent = "兼容模式已启用：回答生成后，这里会展示被检索到的文献片段。";
+
+        var API_BASE = "http://127.0.0.1:8000";
+
+        function setText(id, text) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = text;
+        }
+        function setDisabled(id, disabled) {
+          var el = document.getElementById(id);
+          if (el) el.disabled = !!disabled;
+        }
+        function getValue(id) {
+          var el = document.getElementById(id);
+          return el && el.value ? String(el.value) : "";
+        }
+        function isChecked(id) {
+          var el = document.getElementById(id);
+          return !!(el && el.checked);
+        }
+
+        // --- ES5: multi-library selection (checkbox + weight) ---
+        function getSelectedLibrariesES5() {
+          var picks = [];
+          var els = document.querySelectorAll("input[data-libkey]");
+          for (var i = 0; i < els.length; i++) {
+            var el = els[i];
+            if (el && el.checked) {
+              var key = el.getAttribute("data-libkey") || "";
+              var wEl = document.getElementById("w_" + key);
+              var w = 1.0;
+              if (wEl && wEl.value != null && String(wEl.value).trim()) {
+                var ww = Number(wEl.value);
+                if (!isNaN(ww) && ww > 0) w = ww;
+              }
+              picks.push({ key: key, weight: w });
+            }
+          }
+          return picks;
+        }
+        function renderDocsES5(docs) {
+          var list = document.getElementById("excerptList");
+          var subtitle = document.getElementById("sidebarSubtitle");
+          var detail = document.getElementById("excerptDetailCard");
+          if (!list || !subtitle) return;
+          list.innerHTML = "";
+          if (!docs || !docs.length) {
+            subtitle.textContent = "未检索到任何文献片段（兼容模式）。";
+            if (detail) detail.style.display = "none";
+            return;
+          }
+          subtitle.textContent = "共检索到 " + docs.length + " 个文献片段（兼容模式）。";
+          for (var i = 0; i < docs.length; i++) {
+            var d = docs[i] || {};
+            var item = document.createElement("div");
+            item.className = "excerpt-item";
+            var meta = document.createElement("div");
+            meta.className = "excerpt-meta";
+            meta.textContent = (d.source || "Unknown") + " (p. " + (d.page || "?") + ")";
+            var text = document.createElement("div");
+            text.className = "excerpt-text";
+            text.textContent = d.text || "";
+            item.appendChild(meta);
+            item.appendChild(text);
+            list.appendChild(item);
+          }
+        }
+
+        var askBtn = document.getElementById("askButton");
+        if (!askBtn) {
+          setText("statusText", "[JS错误] 找不到提问按钮（#askButton）");
+          return;
+        }
+        askBtn.disabled = false;
+
+        askBtn.onclick = function () {
+          setText("statusText", "[点击] 已点击“提问”（ES5 兜底）");
+          var q = getValue("questionInput").replace(/^\s+|\s+$/g, "");
+          if (!q) {
+            try { alert("请先输入一个问题。"); } catch (e) {}
+            return;
+          }
+          setDisabled("askButton", true);
+          setText("answerContent", "正在请求后端…");
+
+          var payload = {
+            question: q,
+            keyword_terms: null,
+            source_filters: null,
+            auto_extract_keywords: false,
+            use_hybrid: isChecked("useHybrid"),
+            use_rerank: isChecked("useRerank"),
+            use_sep_reference: isChecked("useSepReference"),
+            ultra_long_answer: isChecked("ultraLongAnswer"),
+            answer_style: getValue("answerStyleSelect") || "哲学论述",
+            llm_provider: "gemini",
+            llm_model: "gemini-3.1-pro-preview"
+          };
+
+          // 尽量读取用户选择（兼容模式不做复杂联动）
+          var modelRaw = getValue("answerModelSelect");
+          if (modelRaw && modelRaw.indexOf(":") > 0) {
+            var p = modelRaw.split(":");
+            payload.llm_provider = p[0] || "gemini";
+            payload.llm_model = p.slice(1).join(":") || payload.llm_model;
+          }
+
+          // multi-library selection (RRF weighted fusion)
+          try {
+            var picks = getSelectedLibrariesES5();
+            if (picks && picks.length) {
+              var lids = [];
+              var wts = [];
+              for (var pi = 0; pi < picks.length; pi++) {
+                lids.push(picks[pi].key);
+                wts.push(picks[pi].weight);
+              }
+              payload.library_ids = lids;
+              payload.library_weights = wts;
+            }
+          } catch (ePick) {}
+
+          try {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", API_BASE + "/api/answer", true);
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.onreadystatechange = function () {
+              if (xhr.readyState !== 4) return;
+              setDisabled("askButton", false);
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                  var data = JSON.parse(xhr.responseText || "{}");
+                  setText("answerContent", data.answer || "(empty)");
+                  setText("statusText", "完成（ES5兜底-v2）：模型 " + (data.answer_model || "unknown"));
+                  renderDocsES5(data.docs || []);
+                } catch (e) {
+                  setText("answerContent", xhr.responseText || "");
+                  setText("statusText", "完成但解析 JSON 失败（ES5 兜底）");
+                }
+              } else {
+                setText("answerContent", "请求失败（ES5 兜底）。");
+                setText("statusText", "失败：HTTP " + xhr.status + " " + (xhr.responseText || ""));
+              }
+            };
+            xhr.onerror = function () {
+              setDisabled("askButton", false);
+              setText("answerContent", "网络错误：无法连接后端。");
+              setText("statusText", "失败：网络错误（检查后端 127.0.0.1:8000 是否启动）");
+            };
+            xhr.send(JSON.stringify(payload));
+          } catch (e) {
+            setDisabled("askButton", false);
+            setText("statusText", "失败：" + (e && e.message ? e.message : String(e)));
+          }
+        };
+
+        function loadLibrariesES5() {
+          setText("statusText", "[库] 正在连接后端…");
+          var sel = document.getElementById("librarySourcesSelect");
+          if (sel) {
+            sel.innerHTML = "";
+            var o0 = document.createElement("option");
+            o0.value = "";
+            o0.disabled = true;
+            o0.textContent = "正在连接 " + API_BASE + " …";
+            sel.appendChild(o0);
+          }
+          var xhr = new XMLHttpRequest();
+          xhr.timeout = 20000;
+          xhr.open("GET", API_BASE + "/api/libraries", true);
+          xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                var data = JSON.parse(xhr.responseText || "{}");
+                var libs = data.libraries || [];
+                var list = document.getElementById("libraryList");
+                if (list) {
+                  list.innerHTML = "";
+                  for (var li = 0; li < libs.length; li++) {
+                    var l = libs[li];
+                    var div = document.createElement("div");
+                    div.className = "excerpt-item";
+                    div.style.cursor = "default";
+                    var key = (l.profile + "__" + l.library_id);
+                    var meta = document.createElement("div");
+                    meta.className = "excerpt-meta";
+                    meta.style.cursor = "pointer";
+                    meta.title = "点击：在下方下拉框选中该库并加载文献列表";
+                    var cc = (l.chroma_collection_used || l.chroma_collection || "");
+                    meta.textContent =
+                      key +
+                      "  (chunks=" +
+                      (l.chunks_count != null ? l.chunks_count : "?") +
+                      ", sources=" +
+                      (l.sources_count != null ? l.sources_count : "?") +
+                      ")" +
+                      (cc ? (" · chroma=" + String(cc)) : "");
+                    meta.onclick = (function (k) {
+                      return function () {
+                        var sel3 = document.getElementById("librarySourcesSelect");
+                        if (sel3) sel3.value = k;
+                        loadLibrarySourcesES5();
+                      };
+                    })(key);
+                    var line2 = document.createElement("div");
+                    line2.className = "excerpt-text";
+                    line2.style.marginTop = "6px";
+                    line2.innerHTML =
+                      '<label style="display:flex; gap:8px; align-items:center; margin-top:4px;">' +
+                      '<input type="checkbox" data-libkey="' + (l.library_id || "") + '"/>' +
+                      "参与检索（library_id=" + (l.library_id || "") + ")" +
+                      "</label>" +
+                      '<label style="display:flex; gap:8px; align-items:center; margin-top:4px;">' +
+                      '权重 <input id="w_' + (l.library_id || "") + '" type="number" value="1" min="0.1" step="0.1" ' +
+                      'style="width:80px; padding:4px 6px; border:1px solid #d1d5db; border-radius:6px;" />' +
+                      "</label>";
+                    div.appendChild(meta);
+                    div.appendChild(line2);
+                    list.appendChild(div);
+                  }
+                }
+                var sel2 = document.getElementById("librarySourcesSelect");
+                if (sel2) {
+                  sel2.innerHTML = "";
+                  if (!libs.length) {
+                    var oEmpty = document.createElement("option");
+                    oEmpty.value = "";
+                    oEmpty.disabled = true;
+                    oEmpty.textContent = "（未发现 chroma 库，请先 Ingest）";
+                    sel2.appendChild(oEmpty);
+                  } else {
+                    for (var sj = 0; sj < libs.length; sj++) {
+                      var lj = libs[sj];
+                      var op = document.createElement("option");
+                      op.value = lj.profile + "__" + lj.library_id;
+                      op.textContent = lj.profile + "__" + lj.library_id;
+                      sel2.appendChild(op);
+                    }
+                  }
+                }
+                setText("statusText", "[库] 已加载 " + libs.length + " 个库（兼容模式）");
+              } catch (e) {
+                setText("statusText", "[库] 解析失败（兼容模式）");
+                var selE = document.getElementById("librarySourcesSelect");
+                if (selE) {
+                  selE.innerHTML = "";
+                  var oE = document.createElement("option");
+                  oE.value = "";
+                  oE.disabled = true;
+                  oE.textContent = "（接口返回异常，请检查后端日志）";
+                  selE.appendChild(oE);
+                }
+              }
+            } else {
+              setText("statusText", "[库] 失败 HTTP " + xhr.status);
+              var selH = document.getElementById("librarySourcesSelect");
+              if (selH) {
+                selH.innerHTML = "";
+                var oH = document.createElement("option");
+                oH.value = "";
+                oH.disabled = true;
+                oH.textContent = "（HTTP " + xhr.status + "：请先启动后端再刷新）";
+                selH.appendChild(oH);
+              }
+            }
+          };
+          xhr.onerror = function () {
+            setText("statusText", "[库] 网络错误（兼容模式）");
+            var selN = document.getElementById("librarySourcesSelect");
+            if (selN) {
+              selN.innerHTML = "";
+              var oN = document.createElement("option");
+              oN.value = "";
+              oN.disabled = true;
+              oN.textContent = "（无法连接：请确认已启动 start_app / uvicorn）";
+              selN.appendChild(oN);
+            }
+          };
+          xhr.ontimeout = function () {
+            setText("statusText", "[库] 请求超时 20s（兼容模式）");
+            var selT = document.getElementById("librarySourcesSelect");
+            if (selT) {
+              selT.innerHTML = "";
+              var oT = document.createElement("option");
+              oT.value = "";
+              oT.disabled = true;
+              oT.textContent = "（连接超时：后端未响应）";
+              selT.appendChild(oT);
+            }
+          };
+          xhr.send();
+        }
+
+        // --- ES5: upload (drag/click) ---
+        function uploadFilesES5(fileList) {
+          var ingestStatus = document.getElementById("ingestStatus");
+          var dropzone = document.getElementById("uploadDropzone");
+          var fileInput = document.getElementById("uploadFileInput");
+          var autoIngest = document.getElementById("autoIngestAfterUpload");
+          var allowed = /\.(pdf|docx|json|epub)$/i;
+          var picked = [];
+          try {
+            for (var i = 0; i < fileList.length; i++) {
+              var f = fileList[i];
+              if (f && f.name && allowed.test(f.name)) picked.push(f);
+            }
+          } catch (e) {}
+          if (!picked.length) {
+            if (ingestStatus) ingestStatus.textContent = "请选择 .pdf / .docx / .json / .epub 文件。";
+            return;
+          }
+          var fd = new FormData();
+          for (var j = 0; j < picked.length; j++) fd.append("files", picked[j]);
+          if (dropzone) dropzone.classList.add("disabled");
+          if (fileInput) fileInput.disabled = true;
+          if (ingestStatus) ingestStatus.textContent = "正在上传 " + picked.length + " 个文件…";
+          setText("statusText", "[上传] 正在上传…（兼容模式）");
+          var xhr = new XMLHttpRequest();
+          xhr.timeout = 600000; // 10 min
+          xhr.open("POST", API_BASE + "/api/upload", true);
+          xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
+            if (dropzone) dropzone.classList.remove("disabled");
+            if (fileInput) fileInput.disabled = false;
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                var data = JSON.parse(xhr.responseText || "{}");
+                if (ingestStatus) ingestStatus.textContent = "上传完成：已保存 " + (data.count || 0) + " 个文件到 data/uploads/。";
+              } catch (e2) {
+                if (ingestStatus) ingestStatus.textContent = "上传完成（但解析返回失败）。";
+              }
+              setText("statusText", "[上传] 完成（兼容模式）");
+              if (autoIngest && autoIngest.checked) {
+                runIngestES5();
+              }
+            } else {
+              if (ingestStatus) ingestStatus.textContent = "上传失败：HTTP " + xhr.status + " " + (xhr.responseText || "");
+              setText("statusText", "[上传] 失败 HTTP " + xhr.status);
+            }
+          };
+          xhr.onerror = function () {
+            if (dropzone) dropzone.classList.remove("disabled");
+            if (fileInput) fileInput.disabled = false;
+            if (ingestStatus) ingestStatus.textContent = "上传失败：网络错误。";
+            setText("statusText", "[上传] 网络错误");
+          };
+          xhr.ontimeout = function () {
+            if (dropzone) dropzone.classList.remove("disabled");
+            if (fileInput) fileInput.disabled = false;
+            if (ingestStatus) ingestStatus.textContent = "上传失败：超时。";
+            setText("statusText", "[上传] 超时");
+          };
+          xhr.send(fd);
+        }
+
+        // --- ES5: ingest (named library_id) ---
+        function runIngestES5() {
+          var ingestStatus = document.getElementById("ingestStatus");
+          var ingestBtn = document.getElementById("ingestButton");
+          var profSel = document.getElementById("profileSelect");
+          var libraryId = "default";
+          try {
+            libraryId = prompt("请输入本次 Ingest 的 library_id（如：MEGA2、Heidegger；留空=default）", "default") || "default";
+          } catch (e) {}
+          if (ingestBtn) ingestBtn.disabled = true;
+          if (profSel) profSel.disabled = true;
+          if (ingestStatus) ingestStatus.textContent = "正在运行 Ingest（兼容模式，非流式）…";
+          setText("statusText", "[Ingest] 开始…（兼容模式）");
+          var xhr = new XMLHttpRequest();
+          xhr.timeout = 3600000; // 60 min
+          xhr.open("POST", API_BASE + "/api/ingest", true);
+          xhr.setRequestHeader("Content-Type", "application/json");
+          xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
+            if (ingestBtn) ingestBtn.disabled = false;
+            if (profSel) profSel.disabled = false;
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                var data = JSON.parse(xhr.responseText || "{}");
+                if (ingestStatus) ingestStatus.textContent = "Ingest 完成：pages=" + (data.total_pages || 0) + " chunks=" + (data.total_chunks || 0) + "（library_id=" + libraryId + "）";
+              } catch (e2) {
+                if (ingestStatus) ingestStatus.textContent = "Ingest 完成（但解析返回失败）。";
+              }
+              setText("statusText", "[Ingest] 完成（兼容模式）");
+              // refresh library list
+              loadLibrariesES5();
+              loadLibrarySourcesES5();
+            } else {
+              if (ingestStatus) ingestStatus.textContent = "Ingest 失败：HTTP " + xhr.status + " " + (xhr.responseText || "");
+              setText("statusText", "[Ingest] 失败 HTTP " + xhr.status);
+            }
+          };
+          xhr.onerror = function () {
+            if (ingestBtn) ingestBtn.disabled = false;
+            if (profSel) profSel.disabled = false;
+            if (ingestStatus) ingestStatus.textContent = "Ingest 失败：网络错误。";
+            setText("statusText", "[Ingest] 网络错误");
+          };
+          xhr.ontimeout = function () {
+            if (ingestBtn) ingestBtn.disabled = false;
+            if (profSel) profSel.disabled = false;
+            if (ingestStatus) ingestStatus.textContent = "Ingest 超时。";
+            setText("statusText", "[Ingest] 超时");
+          };
+          xhr.send(JSON.stringify({ library_id: libraryId }));
+        }
+
+        function loadLibrarySourcesES5() {
+          var sel = document.getElementById("librarySourcesSelect");
+          var out = document.getElementById("librarySourcesList");
+          if (!out) return;
+          if (!sel) {
+            out.textContent = "找不到库选择下拉框。";
+            return;
+          }
+          if (sel.options.length && sel.selectedIndex < 0) {
+            sel.selectedIndex = 0;
+          }
+          var v = (sel.value || "").replace(/^\s+|\s+$/g, "");
+          if (!v || v.indexOf("__") < 0) {
+            out.textContent = "请先在上方「刷新库列表」，再在下拉框里选中 quality__… 等项。";
+            setText("statusText", "[文献] 未选择库");
+            return;
+          }
+          var parts = v.split("__");
+          var profile = parts[0] || "quality";
+          var library_id = parts.slice(1).join("__") || "default";
+          setText("statusText", "[文献] 正在加载…");
+          out.innerHTML = "";
+          var loading = document.createElement("div");
+          loading.style.fontSize = "12px";
+          loading.style.color = "#6b7280";
+          loading.textContent = "正在请求文献列表…";
+          out.appendChild(loading);
+          var xhr = new XMLHttpRequest();
+          xhr.timeout = 25000;
+          xhr.open(
+            "GET",
+            API_BASE +
+              "/api/libraries/" +
+              encodeURIComponent(profile) +
+              "/" +
+              encodeURIComponent(library_id) +
+              "/sources",
+            true
+          );
+          xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
+            out.innerHTML = "";
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                var data = JSON.parse(xhr.responseText || "{}");
+                var sources = data.sources || [];
+                if (!sources.length) {
+                  out.textContent = "当前库无文献记录（FTS 为空）。请先 Ingest。";
+                  setText("statusText", "[文献] 无记录");
+                  return;
+                }
+                for (var si = 0; si < sources.length; si++) {
+                  var s = sources[si];
+                  var row = document.createElement("div");
+                  row.className = "excerpt-item";
+                  row.style.cursor = "default";
+                  row.style.fontSize = "12px";
+                  row.textContent =
+                    (s.source || "") + "  (chunks=" + (s.chunks != null ? s.chunks : "?") + ")";
+                  out.appendChild(row);
+                }
+                setText("statusText", "[文献] 已加载 " + sources.length + " 条（兼容模式）");
+              } catch (e) {
+                out.textContent = "解析返回数据失败。";
+              }
+            } else {
+              out.textContent = "加载失败 HTTP " + xhr.status;
+              setText("statusText", "[文献] 失败 " + xhr.status);
+            }
+          };
+          xhr.onerror = function () {
+            out.innerHTML = "";
+            out.textContent = "网络错误：无法连接后端。";
+          };
+          xhr.ontimeout = function () {
+            out.innerHTML = "";
+            out.textContent = "请求超时 25s。";
+          };
+          xhr.send();
+        }
+
+        function loadTrashES5() {
+          var trash = document.getElementById("trashList");
+          if (trash) trash.textContent = "正在加载回收站…";
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", API_BASE + "/api/trash/items", true);
+          xhr.onreadystatechange = function () {
+            if (xhr.readyState !== 4) return;
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                var data = JSON.parse(xhr.responseText || "{}");
+                var items = data.items || [];
+                if (!trash) return;
+                trash.innerHTML = "";
+                if (!items.length) {
+                  trash.textContent = "回收站为空（兼容模式）。";
+                  return;
+                }
+                for (var ti = 0; ti < items.length; ti++) {
+                  var it = items[ti];
+                  var row = document.createElement("div");
+                  row.className = "excerpt-item";
+                  var m = document.createElement("div");
+                  m.className = "excerpt-meta";
+                  m.textContent =
+                    it.trash_session + " · " + it.profile + "__" + it.library_id + " · " + (it.source || "");
+                  var b = document.createElement("button");
+                  b.type = "button";
+                  b.className = "btn secondary";
+                  b.style.marginTop = "6px";
+                  b.textContent = "恢复（兼容模式请确认后端）";
+                  b.setAttribute("data-session", it.trash_session);
+                  b.onclick = (function (session) {
+                    return function () {
+                      if (!confirm("确认恢复该文献？")) return;
+                      var x2 = new XMLHttpRequest();
+                      x2.open("POST", API_BASE + "/api/trash/" + encodeURIComponent(session) + "/restore", true);
+                      x2.onreadystatechange = function () {
+                        if (x2.readyState !== 4) return;
+                        if (x2.status >= 200 && x2.status < 300) {
+                          loadTrashES5();
+                          loadLibrariesES5();
+                          setText("statusText", "[回收站] 恢复完成（兼容模式）");
+                        } else {
+                          setText("statusText", "[回收站] 恢复失败 HTTP " + x2.status);
+                        }
+                      };
+                      x2.send();
+                    };
+                  })(it.trash_session);
+                  row.appendChild(m);
+                  row.appendChild(b);
+                  trash.appendChild(row);
+                }
+              } catch (e) {
+                if (trash) trash.textContent = "回收站解析失败";
+              }
+            }
+          };
+          xhr.send();
+        }
+
+        var refreshLibrariesBtn = document.getElementById("refreshLibrariesBtn");
+        if (refreshLibrariesBtn) {
+          refreshLibrariesBtn.onclick = function () {
+            loadLibrariesES5();
+          };
+        }
+        var refreshTrashBtn = document.getElementById("refreshTrashBtn");
+        if (refreshTrashBtn) {
+          refreshTrashBtn.onclick = function () {
+            loadTrashES5();
+          };
+        }
+        var loadSourcesBtn = document.getElementById("loadSourcesBtn");
+        if (loadSourcesBtn) {
+          loadSourcesBtn.onclick = function () {
+            setText("statusText", "[点击] 加载文献列表（兼容模式）");
+            loadLibrarySourcesES5();
+          };
+        }
+        var librarySourcesSelectEs5 = document.getElementById("librarySourcesSelect");
+        if (librarySourcesSelectEs5) {
+          librarySourcesSelectEs5.onchange = function () {
+            loadLibrarySourcesES5();
+          };
+        }
+        var toggleLibraryPanelBtn = document.getElementById("toggleLibraryPanelBtn");
+        var libraryPanel = document.getElementById("libraryPanel");
+        if (toggleLibraryPanelBtn && libraryPanel) {
+          toggleLibraryPanelBtn.onclick = function () {
+            var open = libraryPanel.style.display === "none";
+            libraryPanel.style.display = open ? "block" : "none";
+            if (open) {
+              loadLibrariesES5();
+              loadTrashES5();
+            }
+          };
+        }
+
+        // Bind upload dropzone + file input (ES5)
+        (function bindUploadES5() {
+          var dropzone = document.getElementById("uploadDropzone");
+          var fileInput = document.getElementById("uploadFileInput");
+          if (!dropzone || !fileInput) return;
+
+          // global prevent default to avoid browser opening file
+          window.addEventListener(
+            "dragover",
+            function (e) {
+              e.preventDefault();
+            },
+            true
+          );
+          window.addEventListener(
+            "drop",
+            function (e) {
+              if (!dropzone.contains(e.target)) {
+                e.preventDefault();
+              }
+            },
+            true
+          );
+
+          dropzone.onclick = function () {
+            if (dropzone.classList.contains("disabled")) return;
+            fileInput.click();
+          };
+          fileInput.onchange = function () {
+            if (fileInput.files && fileInput.files.length) {
+              uploadFilesES5(fileInput.files);
+              fileInput.value = "";
+            }
+          };
+          dropzone.addEventListener("dragover", function (e) {
+            e.preventDefault();
+            if (!dropzone.classList.contains("disabled")) dropzone.classList.add("dragover");
+            setText("statusText", "[上传] 检测到拖拽文件，松手即可上传（兼容模式）");
+          });
+          dropzone.addEventListener("dragleave", function () {
+            dropzone.classList.remove("dragover");
+          });
+          dropzone.addEventListener("drop", function (e) {
+            e.preventDefault();
+            dropzone.classList.remove("dragover");
+            if (dropzone.classList.contains("disabled")) return;
+            var files = e.dataTransfer && e.dataTransfer.files;
+            if (files && files.length) uploadFilesES5(files);
+          });
+        })();
+
+        // Bind ingest button (ES5)
+        var ingestBtn = document.getElementById("ingestButton");
+        if (ingestBtn) {
+          ingestBtn.onclick = function () {
+            runIngestES5();
+          };
+        }
+
+        // 给用户一个快速健康检查提示
+        setTimeout(function () {
+          if (banner) banner.textContent += "（如仍失败，请确认后端可访问 /api/health）";
+        }, 300);
+      }
+
+      // 等待主脚本（module）有机会启动；若没启动，自动接管
+      setTimeout(function () {
+        // 以 OK 为准：主脚本可能“进入但报错”，此时不应沉默进入兜底，而应给出错误提示
+        if (!window.__MAIN_SCRIPT_OK__) {
+          var err = "";
+          try { err = String(window.__MAIN_SCRIPT_ERROR__ || ""); } catch (e) { err = ""; }
+          var started = false;
+          try { started = !!window.__MAIN_SCRIPT_STARTED__; } catch (e2) { started = false; }
+          if (err) {
+            activateFallback("主脚本报错：" + err.slice(0, 260));
+          } else if (!started) {
+            activateFallback("检测到主脚本未启动/解析失败");
+          } else {
+            // 已启动但未 OK：不要抢占 UI（给 main.js 更多初始化时间/或等待 classic 降级）
+          }
+        }
+      }, (window.__MAIN_SCRIPT_LOADER__ ? 3800 : 1200));
+
+      // 如果页面 load 后仍未启动，继续接管（更稳）
+      window.addEventListener("load", function () {
+        setTimeout(function () {
+          if (!window.__MAIN_SCRIPT_OK__) {
+            var err = "";
+            try { err = String(window.__MAIN_SCRIPT_ERROR__ || ""); } catch (e) { err = ""; }
+            var started = false;
+            try { started = !!window.__MAIN_SCRIPT_STARTED__; } catch (e2) { started = false; }
+            if (err) {
+              activateFallback("主脚本报错：" + err.slice(0, 260));
+            } else if (!started) {
+              activateFallback("load 后仍未启动主脚本");
+            } else {
+              // 已启动但未 OK：再等等，不接管
+            }
+          }
+        }, (window.__MAIN_SCRIPT_LOADER__ ? 2200 : 50));
+      });
+    })();
+  </script>
+</body>
+</html>
+

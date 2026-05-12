@@ -1,0 +1,32 @@
+# Recommended runtime: Python 3.11 (for stable wheels, e.g., gensim on Windows).
+# First launch needs internet to download embedding/reranker models into Hugging Face cache (~/.cache/huggingface).
+# Optional: set HF_TOKEN for higher Hub rate limits (https://huggingface.co/settings/tokens).
+# SQLite FTS5 / profile switching use stdlib sqlite3.
+#
+# Memory / wiki / concept layer (see README): chromadb for chunk + optional concept collections;
+# networkx for user concept graphs; google-genai for Gemini; fastapi/uvicorn for HTTP including NDJSON streaming.
+chromadb
+sentence-transformers
+langchain-text-splitters
+google-genai
+httpx[socks]
+pymupdf
+python-docx
+nltk
+jieba
+pypinyin
+pykakasi
+gensim
+pyLDAvis
+matplotlib
+seaborn
+pandas
+networkx
+torch
+transformers
+fastapi
+uvicorn[standard]
+python-multipart
+tqdm
+ebooklib
+beautifulsoup4
